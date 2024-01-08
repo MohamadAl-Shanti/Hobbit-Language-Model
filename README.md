@@ -8,4 +8,4 @@ This model's current implementation is inspired by these sources
   * MLP, following Bengio et al. 2003
 
 # Usage
-Any English text file can be used in place of Hobbits.txt so long as it contains distince sentences.
+Any English text file can be used in place of Hobbits.txt so long as it contains distinct sentences.
