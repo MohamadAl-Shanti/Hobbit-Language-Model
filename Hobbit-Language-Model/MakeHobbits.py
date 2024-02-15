@@ -3,9 +3,10 @@ import torch.nn.functional as F
 import torch
 import re
 import string
+import numpy as np
 
 # Reading file into String
-with open('hobbit.txt', 'r', encoding='utf-8') as file:
+with open('hob2.txt', 'r', encoding='utf-8') as file:
     text = file.read()
 
 # Creating list of unique words
@@ -25,53 +26,51 @@ stoi = {s: i + 1 for i, s in enumerate(sorted(unique_words))}
 stoi['*'] = 0
 itos = {i: s for s, i in stoi.items()}
 
-block_size = 3  # Number of words used to predict next word in the sequence.
-X, Y = [], []  # List X: Neural network input. List Y: Labels for each element of X
-
-# Populates lists X and Y
+xs, ys = [], []
 for sen in sentences:
+    words = ["*"] + sen.translate(str.maketrans("", "", string.punctuation)).split() + ["*"]
+    for word1, word2 in zip(words, words[1:]):
+        ix1 = stoi[word1]
+        ix2 = stoi[word2]
+        xs.append(ix1)
+        ys.append(ix2)
+xs = torch.tensor(xs)
+ys = torch.tensor(ys)
+num = xs.nelement()
 
-    context = [0] * block_size
-    for word in sen.split():
-        ix = stoi.get(word, 0)
-        X.append(context)
-        Y.append(ix)
-        context = context[1:] + [ix]
+g = torch.Generator().manual_seed(1293090)
+W = torch.randn((len(unique_words) + 1, len(unique_words) + 1), generator=g, requires_grad=True)
 
-X = torch.tensor(X)
-Y = torch.tensor(Y)
-
-C = torch.randn(vocab, 3)  # Look-up table: Each unique word represented by a 3-dimensional tensor.
-
-# Weights and bias entering hidden layer.
-W1 = torch.randn(9, 100)
-b1 = torch.randn(100)
-
-# Weights and bias entering output layer
-W2 = torch.randn(100, vocab)
-b2 = torch.randn(vocab)
-
-# List of neural network's parameters
-parameters = [C, W1, b1, W2, b2]
-
-# Ensures parameters can be back-propagated through
-for p in parameters:
-    p.requires_grad = True
-
-# Training loop
-for i in range(1000):
-    # Forward pass
-    emb = C[X]
-    h = torch.tanh(emb.view(-1, 9) @ W1 + b1)
-    logits = h @ W2 + b2
-    loss = F.cross_entropy(logits, Y)
+for k in range(100):
+    xenc = F.one_hot(xs, num_classes=len(unique_words) + 1).float()
+    logits = xenc @ W
+    counts = logits.exp()
+    probs = counts / counts.sum(1, keepdim=True)
+    loss = -probs[torch.arange(num), ys].log().mean()
     print(loss.item())
 
-    # Backward pass
-    for p in parameters:
-        p.grad = None
+    W.grad = None
     loss.backward()
 
-    # Update
-    for p in parameters:
-        p.data += -0.1 * p.grad
+    W.data += -1000 * W.grad
+
+for i in range(5):
+    out = []
+    ix = 0
+
+    while True:
+
+        # Start with the initial word
+        xenc = F.one_hot(torch.tensor([ix]), num_classes=len(unique_words) + 1).float()
+        logits = xenc @ W
+        counts = logits.exp()
+        probs = counts / counts.sum(1, keepdim=True)
+
+        ix = torch.multinomial(probs, num_samples=1, replacement=True, generator=g).item()
+        out.append(itos[ix])
+
+        if ix == 0:
+            break
+    # Print or use the sampled sentence
+    generated_sentence = " ".join(out)
+    print(generated_sentence)
